@@ -471,36 +471,42 @@ class RTLSDRManager:
         end_freq = end_freq or self.MAX_FREQ
         
         self.logger.info(f"Starting panoramic sweep: {start_freq/1e6:.1f} - {end_freq/1e6:.1f} MHz")
-        
+
         sweep_start = time.time()
         all_detections = []
-        
+
         # Generate sweep frequencies
         frequencies = self._generate_sweep_frequencies(start_freq, end_freq, step_size)
-        
-        for i, freq in enumerate(frequencies):
-            if not self.is_running:
-                break
-            
-            try:
-                # Capture samples for signal detection
-                samples = self._capture_samples(freq, self.SWEEP_SAMPLE_RATE, 0.1)  # 100ms
-                
-                # Detect signals
-                detections = self._detect_signals(samples, freq, self.SWEEP_SAMPLE_RATE)
-                
-                # Filter by confidence
-                filtered_detections = [d for d in detections if d.confidence >= min_confidence]
-                all_detections.extend(filtered_detections)
-                
-                # Progress logging
-                if (i + 1) % 10 == 0:
-                    progress = (i + 1) / len(frequencies) * 100
-                    self.logger.info(f"Sweep progress: {progress:.1f}% ({freq/1e6:.1f} MHz)")
-                
-            except Exception as e:
-                self.logger.warning(f"Error sweeping {freq/1e6:.3f} MHz: {e}")
-        
+
+        # Mark sweep as running so external callers can request cancellation
+        self.is_running = True
+        try:
+            for i, freq in enumerate(frequencies):
+                if not self.is_running:
+                    break
+
+                try:
+                    # Capture samples for signal detection
+                    samples = self._capture_samples(freq, self.SWEEP_SAMPLE_RATE, 0.1)  # 100ms
+
+                    # Detect signals
+                    detections = self._detect_signals(samples, freq, self.SWEEP_SAMPLE_RATE)
+
+                    # Filter by confidence
+                    filtered_detections = [d for d in detections if d.confidence >= min_confidence]
+                    all_detections.extend(filtered_detections)
+
+                    # Progress logging
+                    if (i + 1) % 10 == 0:
+                        progress = (i + 1) / len(frequencies) * 100
+                        self.logger.info(f"Sweep progress: {progress:.1f}% ({freq/1e6:.1f} MHz)")
+
+                except Exception as e:
+                    self.logger.warning(f"Error sweeping {freq/1e6:.3f} MHz: {e}")
+        finally:
+            # Always reset running state when sweep finishes or is interrupted
+            self.is_running = False
+
         # Update statistics
         sweep_time = time.time() - sweep_start
         self.sweep_stats['total_sweeps'] += 1
